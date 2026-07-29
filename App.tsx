@@ -17,6 +17,7 @@ import Expenses from './components/Expenses';
 import Invoices from './components/Invoices';
 import Reports from './components/Reports';
 import Employees from './components/Employees';
+
 import AuditLogViewer from './components/AuditLogViewer';
 import Settings from './components/Settings';
 import BarcodeManager from './components/BarcodeManager';
@@ -125,18 +126,6 @@ const App: React.FC = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -495,6 +484,7 @@ const App: React.FC = () => {
         return hasModuleAccess(user, roles, 'reports') ? <Reports data={data} /> : <AccessRestricted />;
       case NavigationTab.Employees:
         return hasPermission(user, roles, 'employees.view') ? <Employees data={data} updateData={handleUpdateData} /> : <AccessRestricted />;
+
       case NavigationTab.AuditLogs:
         return (hasPermission(user, roles, 'audit.view') || isAdmin) ? <AuditLogViewer data={data} updateData={handleUpdateData} /> : <AccessRestricted />;
       case NavigationTab.Manufacturing:
@@ -566,6 +556,7 @@ const App: React.FC = () => {
           {hasPermission(data.currentUser, rolesList, 'employees.view') && (
             <NavItem active={activeTab === NavigationTab.Employees} onClick={() => navigateTo(NavigationTab.Employees)} icon={<IconUser className="w-5 h-5" />} label="Employees" />
           )}
+
           {(hasPermission(data.currentUser, rolesList, 'audit.view') || isAdmin) && (
             <NavItem active={activeTab === NavigationTab.AuditLogs} onClick={() => navigateTo(NavigationTab.AuditLogs)} icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>} label="Audit Logs" />
           )}
@@ -608,13 +599,7 @@ const App: React.FC = () => {
             <IconMenu />
           </button>
           <div>
-            <div className="flex items-center space-x-3">
-              <h2 className={`text-xl font-bold capitalize ${themeColors.text}`}>{activeTab.replace('_', ' ')}</h2>
-              <div className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider flex items-center space-x-1 ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                <span>{isOnline ? 'Online' : 'Offline'}</span>
-              </div>
-            </div>
+            <h2 className={`text-xl font-bold capitalize ${themeColors.text}`}>{activeTab.replace('_', ' ')}</h2>
             {(data.isLocalFolderConnected || data.isLocalFolder2Connected) && (
               <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest hidden md:block">
                 • Auto-Sync Active

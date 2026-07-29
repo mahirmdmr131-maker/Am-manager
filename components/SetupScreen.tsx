@@ -190,7 +190,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onComplete, onImport }) => {
               <input type="password" required className="w-full px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={adminData.password} onChange={e => setAdminData({ ...adminData, password: e.target.value })} placeholder="Create password" />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1">Registered Mobile (for OTP)</label>
+              <label className="block text-xs font-bold text-slate-500 mb-1">Registered Mobile</label>
               <input type="tel" className="w-full px-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" value={adminData.phone} onChange={e => setAdminData({ ...adminData, phone: e.target.value })} placeholder="e.g. +91 9876543210" />
             </div>
             <div>
