@@ -1,22 +1,16 @@
 import { Sale } from '../types';
 import { saveOrDownloadFile } from './fileSaver';
+import { printNativeDocument, isNativeApp } from './nativeBridge';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
 /**
- * Enhanced Printer Utility for Web, Android WebView / Capacitor Apps & Mobile Browsers
+ * Enhanced Printer Utility for Web, Android WebView / Capacitor Apps, Electron, Tauri & Mobile Browsers
  */
 
 // Isolated iframe print helper that works across Android WebViews & standard browsers
-export const printElement = (elementId: string | HTMLElement, title = 'Invoice') => {
+export const printElement = async (elementId: string | HTMLElement, title = 'Invoice') => {
   try {
-    // Check if Android Native Print Spooler interface is available
-    const androidBridge = (window as any).AndroidBridge;
-    if (androidBridge && typeof androidBridge.printDocument === 'function') {
-      androidBridge.printDocument(title);
-      return;
-    }
-
     let targetEl: HTMLElement | null = null;
 
     if (typeof elementId === 'string') {
@@ -25,11 +19,19 @@ export const printElement = (elementId: string | HTMLElement, title = 'Invoice')
       targetEl = elementId;
     }
 
+    const htmlContent = targetEl ? targetEl.outerHTML : '';
+
+    if (isNativeApp()) {
+      const res = await printNativeDocument({ title, htmlContent });
+      if (res.success) return;
+    }
+
     if (!targetEl) {
       console.warn('Target print element not found, using window.print()');
       window.print();
       return;
     }
+
 
     // Create isolated hidden iframe
     const iframe = document.createElement('iframe');
@@ -50,8 +52,6 @@ export const printElement = (elementId: string | HTMLElement, title = 'Invoice')
       window.print();
       return;
     }
-
-    const htmlContent = targetEl.outerHTML;
 
     doc.open();
     doc.write(`

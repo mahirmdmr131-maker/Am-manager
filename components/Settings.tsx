@@ -126,18 +126,27 @@ const Settings: React.FC<SettingsProps> = ({ data, updateData, onManualSync, onL
 
   const handleBrowseFolder = async (slot: 1 | 2) => {
     try {
-      // @ts-ignore - File System Access API
-      const handle = await window.showDirectoryPicker({
-        mode: 'readwrite'
-      });
-      if (handle) {
-        onSetLocalHandle(handle, slot);
-        alert(`${slot === 1 ? 'Primary' : 'Secondary'} Archive connected to: ${handle.name}`);
+      if (typeof (window as any).showDirectoryPicker === 'function') {
+        const handle = await (window as any).showDirectoryPicker({
+          mode: 'readwrite'
+        });
+        if (handle) {
+          onSetLocalHandle(handle, slot);
+          alert(`${slot === 1 ? 'Primary' : 'Secondary'} Archive connected to: ${handle.name}`);
+        }
+      } else if ((window as any).ElectronBridge?.selectFolder) {
+        const folderPath = await (window as any).ElectronBridge.selectFolder();
+        if (folderPath) {
+          onSetLocalHandle({ name: folderPath, kind: 'directory' }, slot);
+          alert(`${slot === 1 ? 'Primary' : 'Secondary'} Archive connected to: ${folderPath}`);
+        }
+      } else {
+        alert('Directory picker is not supported in this browser or app environment. Local folder sync requires Chromium web browsers or Electron desktop app.');
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         console.error('Folder selection failed:', err);
-        alert('Failed to connect folder. Ensure your browser supports the File System Access API.');
+        alert('Failed to connect folder. Ensure your browser or app environment permissions allow directory access.');
       }
     }
   };
@@ -165,12 +174,15 @@ const Settings: React.FC<SettingsProps> = ({ data, updateData, onManualSync, onL
         const importedData = JSON.parse(event.target?.result as string);
         if (importedData.users && importedData.business && importedData.customers) {
           if (confirm('RESTORE WARNING: This will replace all current business data, customers, and records. Proceed?')) {
-            // Migration: Upgrade old "admin" role to "super_admin"
+            // Migration: Upgrade old "admin" role to "super_admin" and map legacy "staff" to "employee"
             const upgradedUsers = importedData.users.map((u: any) => {
+              let role = u.role;
               if (u.role === 'admin') {
-                return { ...u, role: 'super_admin' };
+                role = 'super_admin';
+              } else if (u.role === 'staff') {
+                role = 'employee';
               }
-              return u;
+              return { ...u, role };
             });
             
             updateData(() => ({

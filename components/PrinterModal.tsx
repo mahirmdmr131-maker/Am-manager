@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sale } from '../types';
 import { formatSaleAsText, printViaBluetoothThermal, printElement } from '../utils/printer';
+import { getSystemPrinters, printNativeDocument, isNativeApp, getPlatform } from '../utils/nativeBridge';
 
 interface PrinterModalProps {
   isOpen: boolean;
@@ -27,14 +28,15 @@ export const PrinterModal: React.FC<PrinterModalProps> = ({
   const [ipPort, setIpPort] = useState<string>(localStorage.getItem('am_wifi_printer_port') || '9100');
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
-  const [isElectron, setIsElectron] = useState(false);
+  const [platformName, setPlatformName] = useState<string>('web');
 
   useEffect(() => {
-    // Detect Electron environment
-    const electron = (window as any).ElectronBridge;
-    if (electron) {
-      setIsElectron(true);
-      electron.getPrinters().then((printers: any[]) => {
+    // Detect environment
+    const currentPlatform = getPlatform();
+    setPlatformName(currentPlatform);
+
+    if (isNativeApp()) {
+      getSystemPrinters().then((printers: any[]) => {
         if (printers && printers.length > 0) {
           setSystemPrinters(printers);
           const defaultPrn = printers.find(p => p.isDefault)?.name || printers[0]?.name;
@@ -54,29 +56,25 @@ export const PrinterModal: React.FC<PrinterModalProps> = ({
     setStatusMsg({ type: 'info', text: 'Sending to system printer...' });
 
     try {
-      const electron = (window as any).ElectronBridge;
-      const android = (window as any).AndroidBridge;
-
-      if (electron) {
-        // Native Electron Print directly in PC app
+      if (isNativeApp()) {
         const printEngineEl = document.getElementById(elementId);
         const htmlContent = printEngineEl ? printEngineEl.outerHTML : `<pre style="font-family:monospace;">${rawText}</pre>`;
-        const res = await electron.printDocument({
+        const res = await printNativeDocument({
           deviceName: selectedSystemPrinter,
           silent: false,
-          htmlContent
+          htmlContent,
+          title
         });
         if (res.success) {
-          setStatusMsg({ type: 'success', text: 'Printed successfully!' });
+          setStatusMsg({ type: 'success', text: res.message || 'Printed successfully!' });
         } else {
-          setStatusMsg({ type: 'error', text: res.message || 'Print job failed' });
+          // Fallback to browser print
+          await printElement(elementId, title);
+          setStatusMsg({ type: 'success', text: 'Print dialog opened' });
         }
-      } else if (android && typeof android.printDocument === 'function') {
-        android.printDocument(title);
-        setStatusMsg({ type: 'success', text: 'Sent to Android Print Spooler' });
       } else {
-        // Direct browser print without external window
-        printElement(elementId, title);
+        // Direct browser print
+        await printElement(elementId, title);
         setStatusMsg({ type: 'success', text: 'Print dialog opened' });
       }
     } catch (err: any) {
@@ -85,6 +83,7 @@ export const PrinterModal: React.FC<PrinterModalProps> = ({
       setIsPrinting(false);
     }
   };
+
 
   // 2. Bluetooth Thermal Print
   const handleBluetoothPrint = async () => {
@@ -214,7 +213,7 @@ export const PrinterModal: React.FC<PrinterModalProps> = ({
             }`}
           >
             <span>💻 System / PC Printer</span>
-            {isElectron && <span className="bg-emerald-500/20 text-emerald-300 text-[9px] px-1.5 py-0.5 rounded font-black">Native EXE</span>}
+            {platformName !== 'web' && <span className="bg-emerald-500/20 text-emerald-300 text-[9px] px-1.5 py-0.5 rounded font-black uppercase">Native {platformName}</span>}
           </button>
           <button
             onClick={() => setActiveTab('bluetooth')}
@@ -286,7 +285,7 @@ export const PrinterModal: React.FC<PrinterModalProps> = ({
                   </select>
                 ) : (
                   <p className="text-xs text-slate-500 dark:text-slate-400 italic">
-                    {isElectron
+                    {platformName !== 'web'
                       ? 'No default printers detected or searching system...'
                       : 'Standard PC/System Printer spooler will open directly inside this app window.'}
                   </p>

@@ -417,8 +417,8 @@ const App: React.FC = () => {
     }
   };
 
-  const isSuperAdmin = data.currentUser?.role === 'super_admin';
-  const isAdmin = isSuperAdmin || data.currentUser?.role === 'admin';
+  const isSuperAdmin = data.currentUser?.role === 'super_admin' || data.currentUser?.role === 'admin';
+  const isAdmin = isSuperAdmin;
   const rolesList = data.roles || [];
 
   const themeColors = useMemo(() => {

@@ -3,12 +3,16 @@
   "private": true,
   "version": "10.11.04",
   "type": "module",
+  "main": "electron-main.cjs",
   "scripts": {
     "dev": "tsx server.ts",
     "start": "node dist/server.cjs",
     "lint": "tsc --noEmit",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:dev": "electron . --dev",
+    "tauri:dev": "tauri dev",
+    "cap:sync": "npm run build && npx cap sync"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",

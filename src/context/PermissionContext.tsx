@@ -31,8 +31,8 @@ export const PermissionProvider: React.FC<{ user: User | null; roles: Role[]; ch
     }
 
     const permissions = getPermissionsForUser(user, roles);
-    const isSuperAdmin = user.role === 'super_admin';
-    const isAdmin = isSuperAdmin || user.role === 'admin';
+    const isSuperAdmin = user.role === 'super_admin' || user.role === 'admin';
+    const isAdmin = isSuperAdmin;
 
     return {
       hasPermission: (permission: Permission) => checkPermission(user, roles, permission),

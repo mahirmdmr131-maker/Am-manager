@@ -135,12 +135,15 @@ export const loadDataAsync = async (): Promise<AppData> => {
     }
     if (!data.users) data.users = [];
     
-    // Migration: Upgrade old "admin" role to "super_admin" since admin is no longer the highest role.
+    // Migration: Upgrade old "admin" role to "super_admin" and legacy "staff" to "employee" since admin is no longer the highest role.
     data.users = data.users.map((u: any) => {
+      let role = u.role;
       if (u.role === 'admin') {
-        return { ...u, role: 'super_admin' };
+        role = 'super_admin';
+      } else if (u.role === 'staff') {
+        role = 'employee';
       }
-      return u;
+      return { ...u, role };
     });
 
     if (!data.customers) data.customers = [];
@@ -192,10 +195,13 @@ export const loadData = (): AppData => {
     const data = JSON.parse(stored);
     if (data.users) {
       data.users = data.users.map((u: any) => {
+        let role = u.role;
         if (u.role === 'admin') {
-          return { ...u, role: 'super_admin' };
+          role = 'super_admin';
+        } else if (u.role === 'staff') {
+          role = 'employee';
         }
-        return u;
+        return { ...u, role };
       });
     }
     return data;

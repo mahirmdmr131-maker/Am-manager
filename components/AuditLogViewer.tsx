@@ -8,7 +8,7 @@ interface AuditLogViewerProps {
 
 export const AuditLogViewer: React.FC<AuditLogViewerProps> = ({ data, updateData }) => {
   const currentUser = data.currentUser;
-  const isSuperAdmin = currentUser?.role === 'super_admin';
+  const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'admin';
 
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');

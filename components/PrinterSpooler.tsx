@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatSaleAsText, printViaBluetoothThermal, printElement } from '../utils/printer';
 import { Sale, TemplateSettings, BusinessInfo } from '../types';
+import { getSystemPrinters, printNativeDocument, isNativeApp, getPlatform } from '../utils/nativeBridge';
 
 interface PrinterSpoolerProps {
   templateSettings?: TemplateSettings;
@@ -33,7 +34,7 @@ export const PrinterSpooler: React.FC<PrinterSpoolerProps> = ({ templateSettings
 
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
-  const [isElectron, setIsElectron] = useState(false);
+  const [platformName, setPlatformName] = useState<string>('web');
 
   // Sample Sale for Live Spooler Preview
   const sampleSale: Sale = {
@@ -54,11 +55,11 @@ export const PrinterSpooler: React.FC<PrinterSpoolerProps> = ({ templateSettings
   };
 
   useEffect(() => {
-    // Detect Electron environment
-    const electron = (window as any).ElectronBridge;
-    if (electron) {
-      setIsElectron(true);
-      electron.getPrinters().then((printers: any[]) => {
+    const currentPlatform = getPlatform();
+    setPlatformName(currentPlatform);
+
+    if (isNativeApp()) {
+      getSystemPrinters().then((printers: any[]) => {
         if (printers && printers.length > 0) {
           setSystemPrinters(printers);
           if (!selectedSystemPrinter) {
@@ -70,6 +71,7 @@ export const PrinterSpooler: React.FC<PrinterSpoolerProps> = ({ templateSettings
       }).catch((err: any) => console.warn('Could not list system printers:', err));
     }
   }, []);
+
 
   // Save Settings Handlers
   const handleSaveDriver = (driver: 'system' | 'bluetooth' | 'network' | 'serial') => {
@@ -108,20 +110,21 @@ export const PrinterSpooler: React.FC<PrinterSpoolerProps> = ({ templateSettings
       const rawText = formatSaleAsText(sampleSale, templateSettings, business);
 
       if (defaultDriver === 'system') {
-        const electron = (window as any).ElectronBridge;
-        if (electron) {
-          const res = await electron.printDocument({
+        if (isNativeApp()) {
+          const res = await printNativeDocument({
             deviceName: selectedSystemPrinter,
             silent: false,
-            htmlContent: `<pre style="font-family:monospace;font-size:12px;">${rawText}</pre>`
+            htmlContent: `<pre style="font-family:monospace;font-size:12px;">${rawText}</pre>`,
+            title: 'Sample Test Spool'
           });
           if (res.success) {
-            setStatusMsg({ type: 'success', text: 'System Printer Test Job Completed!' });
+            setStatusMsg({ type: 'success', text: res.message || 'System Printer Test Job Completed!' });
           } else {
-            setStatusMsg({ type: 'error', text: res.message || 'System print failed' });
+            await printElement('spooler-preview-engine', 'Sample Test Spool');
+            setStatusMsg({ type: 'success', text: 'Customized Bill Spooler Dialog Triggered' });
           }
         } else {
-          printElement('spooler-preview-engine', 'Sample Test Spool');
+          await printElement('spooler-preview-engine', 'Sample Test Spool');
           setStatusMsg({ type: 'success', text: 'Customized Bill Spooler Dialog Triggered' });
         }
       } else if (defaultDriver === 'bluetooth') {
@@ -362,7 +365,7 @@ export const PrinterSpooler: React.FC<PrinterSpoolerProps> = ({ templateSettings
                   </select>
                 ) : (
                   <p className="text-xs text-slate-500 italic">
-                    {isElectron
+                    {platformName !== 'web'
                       ? 'No native system printers detected.'
                       : 'Browser System Spooler active. Direct print commands route to browser print dialog.'}
                   </p>

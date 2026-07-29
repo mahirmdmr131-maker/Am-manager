@@ -1,0 +1,15 @@
+{
+  "appId": "com.amfoodprocessing.manager",
+  "appName": "A M Food Processing Manager",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "backgroundColor": "#312e81"
+    }
+  }
+}

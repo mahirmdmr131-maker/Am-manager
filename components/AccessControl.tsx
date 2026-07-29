@@ -9,8 +9,8 @@ interface AccessControlProps {
 
 export const AccessControl: React.FC<AccessControlProps> = ({ data, updateData }) => {
   const currentUser = data.currentUser;
-  const isSuperAdmin = currentUser?.role === 'super_admin';
-  const isAdmin = isSuperAdmin || currentUser?.role === 'admin';
+  const isSuperAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'admin';
+  const isAdmin = isSuperAdmin;
 
   const [activeSubTab, setActiveSubTab] = useState<'users' | 'roles' | 'matrix'>('users');
 

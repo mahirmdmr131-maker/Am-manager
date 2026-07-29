@@ -175,7 +175,7 @@ export const ALL_PERMISSIONS: Permission[] = ALL_PERMISSIONS_BY_CATEGORY.flatMap
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   super_admin: [...ALL_PERMISSIONS],
-  admin: ALL_PERMISSIONS.filter(p => p !== 'access_control.manage_roles'), // Admin has almost all except super-admin restrictions
+  admin: [...ALL_PERMISSIONS], // Admin has all permissions, same as super-admin
   manager: [
     'dashboard.view',
     'products.view', 'products.add', 'products.edit', 'products.delete', 'products.import', 'products.export',
@@ -261,7 +261,7 @@ const permissionCache = new Map<string, Permission[]>();
 
 export function getPermissionsForUser(user: User | null, customRoles: Role[] = []): Permission[] {
   if (!user) return [];
-  if (user.role === 'super_admin') return ALL_PERMISSIONS;
+  if (user.role === 'super_admin' || user.role === 'admin') return ALL_PERMISSIONS;
 
   const cacheKey = `${user.id}_${user.role}_${user.customRoleId || ''}_${user.createdAt || ''}`;
   if (permissionCache.has(cacheKey)) {
@@ -287,7 +287,7 @@ export function clearPermissionCache() {
 export function hasPermission(user: User | null, customRoles: Role[] = [], permission: Permission): boolean {
   if (!user) return false;
   if (!user.isActive || user.isLocked) return false;
-  if (user.role === 'super_admin') return true;
+  if (user.role === 'super_admin' || user.role === 'admin') return true;
 
   const userPermissions = getPermissionsForUser(user, customRoles);
   return userPermissions.includes(permission);
@@ -296,7 +296,7 @@ export function hasPermission(user: User | null, customRoles: Role[] = [], permi
 export function hasModuleAccess(user: User | null, customRoles: Role[] = [], modulePrefix: string): boolean {
   if (!user) return false;
   if (!user.isActive || user.isLocked) return false;
-  if (user.role === 'super_admin') return true;
+  if (user.role === 'super_admin' || user.role === 'admin') return true;
 
   const userPermissions = getPermissionsForUser(user, customRoles);
   return userPermissions.some(p => p.startsWith(`${modulePrefix}.`));
