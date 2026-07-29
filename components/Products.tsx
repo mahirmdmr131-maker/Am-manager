@@ -1,0 +1,496 @@
+
+import React, { useState, useMemo, useRef } from 'react';
+import { AppData, Product, PriceHistoryEntry } from '../types';
+import { IconAdd, IconProducts, IconPrint } from './Icons';
+import Barcode from 'react-barcode';
+import { QRCodeSVG } from 'qrcode.react';
+import { generateProductCodes, isBarcodeUnique, generateUniqueBarcodeNumber } from '../utils/codeGenerator';
+
+interface ProductsProps {
+  data: AppData;
+  updateData: (updater: (prev: AppData) => AppData) => void;
+  initialSearchTerm?: string;
+}
+
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return '';
+  if (dateStr.includes('T')) {
+    return new Date(dateStr).toLocaleDateString('en-GB');
+  }
+  return dateStr.split('-').reverse().join('/');
+};
+
+const Products: React.FC<ProductsProps> = ({ data, updateData, initialSearchTerm }) => {
+  const [showForm, setShowForm] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm || '');
+  const [viewingHistoryId, setViewingHistoryId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [printBarcodeProduct, setPrintBarcodeProduct] = useState<Product | null>(null);
+
+  const productToDelete = useMemo(() => 
+    deleteConfirmId ? data.products.find(p => p.id === deleteConfirmId) : null
+  , [deleteConfirmId, data.products]);
+
+  React.useEffect(() => {
+    if (initialSearchTerm) setSearchTerm(initialSearchTerm);
+  }, [initialSearchTerm]);
+  
+  const [formData, setFormData] = useState({
+    name: '',
+    unit: 'kg',
+    defaultRate: '',
+    wholesaleRate: '',
+    currentStock: '',
+    minThreshold: '',
+    rateDate: new Date().toISOString().split('T')[0],
+    code: '',
+    hsnCode: '',
+    gstPercent: '',
+    barcodeNumber: '',
+    barcodeType: 'Code 128'
+  });
+  const [formBarcodeError, setFormBarcodeError] = useState<string | null>(null);
+
+  const isAdmin = data.currentUser?.role === 'admin';
+  const UNITS = ['kg', 'gram', 'no.', 'pkt', 'box', 'ltr', 'ml', 'bag', 'tin'];
+
+  const filteredProducts = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    return data.products.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      (p.code && p.code.toLowerCase().includes(q)) ||
+      (p.barcodeNumber && p.barcodeNumber.toLowerCase().includes(q))
+    );
+  }, [data.products, searchTerm]);
+
+  const handleAutoGenerateBarcode = () => {
+    const uniqueNum = generateUniqueBarcodeNumber(data.products, formData.barcodeType);
+    setFormData(prev => ({ ...prev, barcodeNumber: uniqueNum }));
+    setFormBarcodeError(null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormBarcodeError(null);
+
+    const currentId = editingProduct ? editingProduct.id : crypto.randomUUID();
+
+    if (formData.barcodeNumber.trim()) {
+      if (!isBarcodeUnique(formData.barcodeNumber, data.products, currentId)) {
+        setFormBarcodeError("This barcode number is already assigned to another product!");
+        return;
+      }
+    }
+
+    const newRate = Number(formData.defaultRate) || 0;
+    const newWholesale = Number(formData.wholesaleRate) || 0;
+    const rateDate = formData.rateDate || new Date().toISOString().split('T')[0];
+
+    const productForCode = {
+      id: currentId,
+      name: formData.name,
+      code: formData.code,
+      defaultRate: newRate,
+      unit: formData.unit,
+      barcodeNumber: formData.barcodeNumber.trim(),
+      barcodeType: formData.barcodeType
+    } as Product;
+    
+    const { barcodeNumber, barcodeType, barcodeData, qrCodeData } = await generateProductCodes(productForCode, data.products);
+
+    updateData(prev => {
+      let updatedProducts;
+      if (editingProduct) {
+        updatedProducts = prev.products.map(p => {
+          if (p.id === editingProduct.id) {
+            const history = [...(p.priceHistory || [])];
+            if (p.defaultRate !== newRate) {
+              history.unshift({ rate: newRate, date: rateDate });
+            } else if (history.length > 0 && history[0].rate === newRate) {
+              history[0] = { ...history[0], date: rateDate };
+            } else if (history.length === 0) {
+              history.unshift({ rate: newRate, date: rateDate });
+            }
+            return {
+              ...p,
+              name: formData.name,
+              code: formData.code,
+              unit: formData.unit,
+              defaultRate: newRate,
+              wholesaleRate: newWholesale,
+              currentStock: formData.currentStock === '' ? undefined : Number(formData.currentStock),
+              minThreshold: formData.minThreshold === '' ? undefined : Number(formData.minThreshold),
+              hsnCode: formData.hsnCode,
+              gstPercent: formData.gstPercent === '' ? undefined : Number(formData.gstPercent),
+              priceHistory: history,
+              barcodeNumber,
+              barcodeType,
+              barcodeData,
+              qrCodeData,
+              updatedAt: new Date().toISOString()
+            };
+          }
+          return p;
+        });
+      } else {
+        const newProduct: Product = {
+          id: productForCode.id,
+          name: formData.name,
+          code: formData.code,
+          unit: formData.unit,
+          defaultRate: newRate,
+          wholesaleRate: newWholesale,
+          currentStock: formData.currentStock === '' ? undefined : Number(formData.currentStock),
+          minThreshold: formData.minThreshold === '' ? undefined : Number(formData.minThreshold),
+          hsnCode: formData.hsnCode,
+          gstPercent: formData.gstPercent === '' ? undefined : Number(formData.gstPercent),
+          priceHistory: [{ rate: newRate, date: rateDate }],
+          productType: 'FinishedGood',
+          barcodeNumber,
+          barcodeType,
+          barcodeData,
+          qrCodeData,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        updatedProducts = [newProduct, ...prev.products];
+      }
+      return { ...prev, products: updatedProducts };
+    });
+    closeForm();
+  };
+
+  const startEdit = (product: Product) => {
+    setEditingProduct(product);
+    setFormData({
+      name: product.name,
+      code: product.code || '',
+      unit: product.unit,
+      defaultRate: product.defaultRate.toString(),
+      wholesaleRate: product.wholesaleRate?.toString() || '',
+      currentStock: product.currentStock?.toString() || '',
+      minThreshold: product.minThreshold?.toString() || '',
+      rateDate: new Date().toISOString().split('T')[0],
+      hsnCode: product.hsnCode || '',
+      gstPercent: product.gstPercent?.toString() || '',
+      barcodeNumber: product.barcodeNumber || '',
+      barcodeType: product.barcodeType || 'Code 128'
+    });
+    setFormBarcodeError(null);
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingProduct(null);
+    setFormBarcodeError(null);
+    setFormData({ name: '', code: '', unit: 'kg', defaultRate: '', wholesaleRate: '', currentStock: '', minThreshold: '', rateDate: new Date().toISOString().split('T')[0], hsnCode: '', gstPercent: '', barcodeNumber: '', barcodeType: 'Code 128' });
+  };
+
+  const deleteProduct = (id: string) => {
+    if (!isAdmin) {
+      alert("Only admins can remove products from the catalog.");
+      return;
+    }
+    setDeleteConfirmId(id);
+  };
+
+  const confirmDelete = () => {
+    if (!deleteConfirmId || !productToDelete) return;
+
+    updateData(prev => ({
+      ...prev,
+      products: prev.products.filter(p => p.id !== deleteConfirmId),
+      recycleBin: {
+          ...prev.recycleBin,
+          products: [...prev.recycleBin.products, { ...productToDelete, deletedAt: new Date().toISOString() }]
+      }
+    }));
+    setDeleteConfirmId(null);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="relative flex-1 max-w-md">
+           <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+           <input type="text" placeholder="Search product catalog or SKU..." className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-medium shadow-sm" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+        </div>
+        <button onClick={() => setShowForm(true)} className="flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl font-bold shadow-lg transition-all active:scale-95">
+          <IconAdd /><span>Add Product</span>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredProducts.map(product => {
+          const isLowStock = product.currentStock !== undefined && product.minThreshold !== undefined && product.currentStock <= product.minThreshold;
+          
+          return (
+            <div key={product.id} className={`bg-white p-6 rounded-[32px] shadow-sm border transition-all group relative overflow-hidden ${isLowStock ? 'border-rose-200 bg-rose-50/20' : 'border-slate-200 hover:shadow-xl hover:border-indigo-200'}`}>
+              <div className="flex justify-between items-start mb-6">
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center border shadow-inner transition-colors ${isLowStock ? 'bg-rose-50 border-rose-100 text-rose-500' : 'bg-slate-50 text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 border-slate-100'}`}>
+                  <IconProducts className="w-8 h-8" />
+                </div>
+                <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    onClick={() => setPrintBarcodeProduct(product)} 
+                    className="p-2 text-slate-400 hover:text-indigo-600 bg-slate-50 rounded-xl"
+                    title="Print Barcode"
+                  >
+                    <IconPrint className="w-5 h-5" />
+                  </button>
+                  <button 
+                    onClick={() => setViewingHistoryId(viewingHistoryId === product.id ? null : product.id)} 
+                    className={`p-2 rounded-xl transition-all ${viewingHistoryId === product.id ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-400 hover:text-indigo-600'}`}
+                    title="View Price History"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  </button>
+                  <button onClick={() => startEdit(product)} className="p-2 text-slate-400 hover:text-indigo-600 bg-slate-50 rounded-xl" title="Edit Catalog Info">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                  </button>
+                  {isAdmin && (
+                    <button onClick={() => deleteProduct(product.id)} className="p-2 text-slate-400 hover:text-rose-600 bg-slate-50 rounded-xl" title="Remove Product">
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <h4 className="text-xl font-black text-slate-800 mb-2 truncate uppercase tracking-tight">{product.name}</h4>
+              
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Retail</p>
+                  <p className="font-black text-indigo-600 text-sm">₹{product.defaultRate}/{product.unit}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Wholesale</p>
+                  <p className="font-black text-emerald-600 text-sm">₹{product.wholesaleRate || product.defaultRate}/{product.unit}</p>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center px-2">
+                <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest">In Stock</span>
+                <span className={`text-[10px] font-black uppercase ${isLowStock ? 'text-rose-600' : 'text-slate-800'}`}>
+                  {product.currentStock !== undefined ? `${product.currentStock} ${product.unit}` : 'Untracked'}
+                </span>
+              </div>
+
+              {viewingHistoryId === product.id && (
+                <div className="mt-4 pt-4 border-t border-slate-100 animate-in slide-in-from-top-2 duration-300">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Rate Timeline</p>
+                  <div className="space-y-2 max-h-32 overflow-y-auto pr-1">
+                    <div className="flex justify-between items-center bg-indigo-50 p-2 rounded-lg border border-indigo-100">
+                        <span className="text-[10px] font-black text-indigo-600 uppercase">
+                          Current {product.priceHistory?.[0]?.rate === product.defaultRate ? `(${formatDate(product.priceHistory?.[0]?.date)})` : ''}
+                        </span>
+                        <span className="text-[10px] font-black text-indigo-700">₹{product.defaultRate}</span>
+                    </div>
+                    {product.priceHistory?.filter((h, i) => !(i === 0 && h.rate === product.defaultRate)).map((h, i) => (
+                      <div key={i} className="flex justify-between items-center bg-slate-50 p-2 rounded-lg border border-slate-100 opacity-70">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">{formatDate(h.date)}</span>
+                        <span className="text-[10px] font-black text-slate-600">₹{h.rate}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-[40px] shadow-2xl overflow-hidden">
+            <div className="bg-indigo-600 px-8 py-6 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-black uppercase tracking-tight">{editingProduct ? 'Edit Catalog' : 'New Product'}</h3>
+                <p className="text-[10px] text-indigo-100 font-bold uppercase tracking-widest mt-1">Enterprise Price Tiers</p>
+              </div>
+              <button onClick={closeForm} className="p-2 hover:bg-white/10 rounded-full transition-colors"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <form onSubmit={handleSubmit} className="p-8 space-y-4 max-h-[85vh] overflow-y-auto">
+              {formBarcodeError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-2xl text-xs font-bold">
+                  {formBarcodeError}
+                </div>
+              )}
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Product Name *</label>
+                    <input type="text" required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold uppercase" placeholder="e.g. PREMIUM BASMATI" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">SKU / Code</label>
+                    <input type="text" value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold uppercase" placeholder="SKU-1001" />
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                      Barcode & QR Code Settings
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleAutoGenerateBarcode}
+                      className="text-[10px] font-black text-indigo-600 hover:underline uppercase tracking-wider"
+                    >
+                      + Auto-Generate Unique
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Barcode Format</label>
+                      <select
+                        value={formData.barcodeType}
+                        onChange={e => setFormData({ ...formData, barcodeType: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-xs"
+                      >
+                        <option value="Code 128">Code 128</option>
+                        <option value="EAN-13">EAN-13 (13 Digits)</option>
+                        <option value="UPC">UPC-A (12 Digits)</option>
+                        <option value="QR Code">QR Code Only</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Barcode Number</label>
+                      <input
+                        type="text"
+                        value={formData.barcodeNumber}
+                        onChange={e => setFormData({ ...formData, barcodeNumber: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-mono font-bold text-xs"
+                        placeholder="Auto or enter number..."
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Retail Rate (₹)</label>
+                      <input type="number" step="any" required placeholder="0.00" value={formData.defaultRate} onChange={e => setFormData({ ...formData, defaultRate: e.target.value })} className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-black text-indigo-600 uppercase" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Wholesale Rate (₹)</label>
+                      <input type="number" step="any" required placeholder="0.00" value={formData.wholesaleRate} onChange={e => setFormData({ ...formData, wholesaleRate: e.target.value })} className="w-full px-4 py-3 border border-emerald-100 bg-emerald-50/30 rounded-2xl focus:ring-2 focus:ring-emerald-500 outline-none font-black text-emerald-600 uppercase" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Effective Date</label>
+                      <input type="date" required value={formData.rateDate} onChange={e => setFormData({ ...formData, rateDate: e.target.value })} className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold uppercase" />
+                    </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Selling Unit</label>
+                      <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value })} className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold uppercase">
+                        {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Initial Stock</label>
+                      <input type="number" placeholder="Untracked" value={formData.currentStock} onChange={e => setFormData({ ...formData, currentStock: e.target.value })} className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold uppercase" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Alert Qty</label>
+                      <input type="number" placeholder="Alert at..." value={formData.minThreshold} onChange={e => setFormData({ ...formData, minThreshold: e.target.value })} className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold uppercase" />
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">HSN Code</label>
+                    <input type="text" value={formData.hsnCode} onChange={e => setFormData({ ...formData, hsnCode: e.target.value })} className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold uppercase" placeholder="e.g. 1006" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">GST %</label>
+                    <input type="number" step="any" value={formData.gstPercent} onChange={e => setFormData({ ...formData, gstPercent: e.target.value })} className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold uppercase" placeholder="e.g. 5" />
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-4 pt-6">
+                <button type="button" onClick={closeForm} className="flex-1 px-6 py-4 border border-slate-200 text-slate-500 font-black rounded-2xl uppercase text-[10px] tracking-widest hover:bg-slate-50">Discard</button>
+                <button type="submit" className="flex-1 px-6 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl uppercase text-[10px] tracking-widest hover:bg-indigo-700">Save Product</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {printBarcodeProduct && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden border border-slate-200 p-8 flex flex-col items-center">
+            <h3 className="text-xl font-bold mb-6">Print Label</h3>
+            
+            <div className="bg-white p-4 border-2 border-dashed border-slate-300 rounded-xl mb-6 flex flex-col items-center space-y-4 w-full" id="barcode-print-area">
+              <h4 className="font-bold text-lg">{printBarcodeProduct.name}</h4>
+              <p className="text-xl font-black text-indigo-600">₹{printBarcodeProduct.defaultRate}</p>
+              
+              {printBarcodeProduct.code ? (
+                <Barcode value={printBarcodeProduct.code} width={2} height={60} fontSize={14} />
+              ) : (
+                <QRCodeSVG value={`PROD:${printBarcodeProduct.id}`} size={120} />
+              )}
+            </div>
+
+            <div className="flex gap-4 w-full">
+              <button 
+                onClick={() => setPrintBarcodeProduct(null)} 
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all"
+              >
+                Close
+              </button>
+              <button 
+                onClick={() => {
+                  const printContent = document.getElementById('barcode-print-area')?.innerHTML;
+                  const originalContent = document.body.innerHTML;
+                  document.body.innerHTML = `<div style="display: flex; justify-content: center; align-items: center; height: 100vh;">${printContent}</div>`;
+                  window.print();
+                  document.body.innerHTML = originalContent;
+                  window.location.reload();
+                }} 
+                className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transition-all"
+              >
+                Print Label
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteConfirmId && productToDelete && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden border border-rose-100">
+            <div className="bg-rose-50 px-8 py-8 text-center">
+              <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              </div>
+              <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight mb-2">Move to Trash?</h3>
+              <p className="text-sm text-slate-500 font-medium">
+                You are about to remove <span className="font-black text-rose-600 uppercase">"{productToDelete.name}"</span> from the active catalog.
+              </p>
+            </div>
+            <div className="p-8 flex flex-col gap-3">
+              <button 
+                onClick={confirmDelete} 
+                className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-2xl shadow-lg shadow-rose-200 uppercase tracking-widest text-xs transition-all active:scale-95"
+              >
+                Yes, Remove Product
+              </button>
+              <button 
+                onClick={() => setDeleteConfirmId(null)} 
+                className="w-full py-4 bg-slate-50 hover:bg-slate-100 text-slate-500 font-black rounded-2xl uppercase tracking-widest text-xs transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Products;
