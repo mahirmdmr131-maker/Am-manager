@@ -496,7 +496,7 @@ const App: React.FC = () => {
       case NavigationTab.Settings:
         return hasPermission(user, roles, 'settings.view') ? <Settings data={data} updateData={handleUpdateData} onManualSync={handleManualSync} onLogout={handleLogout} onSetLocalHandle={setLocalHandle} /> : <AccessRestricted />;
       case NavigationTab.About:
-        return <About data={data} />;
+        return <About data={data} updateData={handleUpdateData} />;
       default:
         return <Dashboard data={data} updateData={handleUpdateData} />;
     }

